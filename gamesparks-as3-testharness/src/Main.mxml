@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009" 
+					   xmlns:s="library://ns.adobe.com/flex/spark" 
+					   xmlns:mx="library://ns.adobe.com/flex/mx" creationComplete="handleCreationComplete()">
+		<fx:Declarations>
+			<!-- Place non-visual elements (e.g., services, value objects) here -->
+		</fx:Declarations>
+		<fx:Script>
+		<![CDATA[
+			import com.gamesparks.GS;
+			import com.gamesparks.api.messages.ScriptMessage;
+			import com.gamesparks.api.requests.GSRequestBuilder;
+			import com.gamesparks.api.responses.AuthenticationResponse;
+			import com.gamesparks.api.responses.GetLeaderboardEntriesResponse;
+			import com.gamesparks.api.responses.LeaderboardDataResponse;
+			import com.gamesparks.api.responses.ListAchievementsResponse;
+			import com.gamesparks.api.responses.LogEventResponse;
+			import com.gamesparks.api.types.LeaderboardData;
+			
+			import flash.utils.setInterval;
+			
+			private var gs:GS = new GS();
+			private var requestBuilder: GSRequestBuilder = gs.getRequestBuilder();
+			
+			private function handleCreationComplete():void {
+				var obj:Object = gs.getDeviceStats().data;
+				
+				for(var id:String in obj) {
+					var value:Object = obj[id];
+					
+					logger(id + " = " + value);
+				}
+				
+				gs.setAvailabilityCallback(availabilityCallback)
+					.setLogger(logger)
+					.setApiKey("exampleKey12")
+					.setApiSecret("exampleSecret1234567890123456789")
+					.setUseLiveServices(false)
+					.connect();
+			}
+			
+			public function logger(text:String):void {
+				
+				logArea.text += "\n" + text;
+				logArea.scroller.verticalScrollBar.value = logArea.scroller.verticalScrollBar.maximum;
+			}
+			
+			public function availabilityCallback(isAvailable : Boolean):void{
+				
+				logger("availabilityCallback " + isAvailable);
+				
+				if(isAvailable){
+					
+					gs.getRequestBuilder().createAuthenticationRequest().setUserName("u").setPassword("p").send(onUPAuth);
+					
+//					setupTestEnv();
+//					runRequestTests();
+				}					
+			}
+			
+			public function onUPAuth(response:AuthenticationResponse):void{
+				if(!response.HasErrors()){
+					var vec:Vector.<String> = new Vector.<String>();
+					vec.push("ACL");
+					gs.getRequestBuilder().createGetLeaderboardEntriesRequest().setLeaderboards(vec).send(ongleresp);
+				}
+			}
+			
+			public function ongleresp(response:GetLeaderboardEntriesResponse):void{
+				response.setAttribute("", "");
+			}
+			
+			public function setupTestEnv():void{
+
+				gs.getMessageHandler().setHandler(".ScriptMessage",scriptMessageHandler);
+				requestBuilder.createAuthenticationRequest().setUserName("SDK_Tester").setPassword("password").send(handleAuthenticationResponse);
+				requestBuilder.createLogEventRequest().setEventKey("Score_EVT").setNumberEventAttribute("SCORE", 100).send(null);
+			}
+			
+			public function scriptMessageHandler(message:ScriptMessage):void{
+				
+				if(message.getExtCode() == "SDK_Ext_Message"){
+					if(message.getData()["message"] != "AS Test Message"){
+						logger("\nScriptMessage FAILURE on nested data attribute:" + message.getData()["message"] + "\n");
+					}
+				}
+			}
+			
+			public function handleAuthenticationResponse(response:AuthenticationResponse):void {
+				
+				if(response.HasErrors() && response.getAttribute("error")["DETAILS"] == "UNRECOGNISED"){
+					logger("\nAuthentication failed, Sending RegistrationRequest");
+					requestBuilder.createRegistrationRequest().setUserName("SDK_Tester").setDisplayName("SDK Tester").setPassword("password").send(null);
+				}
+			}
+			
+			public function runRequestTests():void{
+				
+				requestBuilder.createLeaderboardDataRequest().setEntryCount(1).setLeaderboardShortCode("Scores_LB").send(handleLeaderboardDataResponse);
+				requestBuilder.createListAchievementsRequest().send(handleListAchievementsResponse);
+				requestBuilder.createLogEventRequest().setEventKey("Send_Message").setStringEventAttribute("message", "AS Test Message").send(null);
+			}
+			
+			public function handleLeaderboardDataResponse(response:LeaderboardDataResponse):void {
+				
+				if(response.getLeaderboardShortCode() != "Scores_LB"){
+					
+					logger("\nLeaderboardDataResponse FAILURE on shortCode:" + response.getLeaderboardShortCode() + "\n");
+				}
+				
+				for each (var dataEntry:LeaderboardData in response.getData()){
+					 
+					if(dataEntry.getAttribute("rank") != 1){
+					
+						logger("\nLeaderboardDataResponse FAILURE on rank attribute:" + dataEntry.getAttribute("rank") + "\n");
+					}
+					
+					if(dataEntry.getAttribute("scriptData") != null){
+						
+						logger("\nLeaderboardDataResponse FAILURE on nested scriptData attribute:" + dataEntry.getAttribute("scriptData") + "\n");
+					}
+					
+					setInterval(function():void {
+						requestBuilder.createLogEventRequest().setEventKey("Score_EVT").setNumberEventAttribute("SCORE", 100).send(handleLogEventResponse);
+					}, 5000);
+				}
+			}
+			
+			public function handleLogEventResponse(response:LogEventResponse):void {
+				logger("LER");
+			}
+			
+			public function handleListAchievementsResponse(response:ListAchievementsResponse):void {
+				
+				if(response.getAchievements().length != 1){
+					logger("\nListAchievementsResponse FAILURE on achievement length: " + response.getAchievements().length);
+				}
+				
+				if(response.getAttribute("achievements")[0]["shortCode"] != "Completionist"){
+					logger("\nListAchievementsResponse: FAILURE on nested achievement shortCode: " + response.getAttribute("achievements")[0]["shortCode"]);
+				}
+			}
+		]]>
+		</fx:Script>
+		
+		<s:TextArea width="100%" height="100%" id="logArea"/>
+</s:WindowedApplication>
